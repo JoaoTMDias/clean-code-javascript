@@ -30,9 +30,8 @@ universally agreed upon. These are guidelines and nothing more, but they are
 ones codified over many years of collective experience by the authors of
 _Clean Code_.
 
-Our craft of software engineering is just a bit over 50 years old, and we are
-still learning a lot. When software architecture is as old as architecture
-itself, maybe then we will have harder rules to follow. For now, let these
+Software engineering continues to evolve, and we are still learning. When
+software architecture is as old as architecture itself, maybe then we will have harder rules to follow. For now, let these
 guidelines serve as a touchstone by which to assess the quality of the
 JavaScript code that you and your team produce.
 
@@ -43,20 +42,28 @@ shaped into its final form. Finally, we chisel away the imperfections when
 we review it with our peers. Don't beat yourself up for first drafts that need
 improvement. Beat up the code instead!
 
+Examples use stable JavaScript supported by modern browsers and supported Node.js
+LTS releases. Examples with `node:` imports are Node.js ES modules (`.mjs` files);
+DOM examples run in a browser. Many examples omit application-specific functions
+to focus on a principle; they are sketches rather than complete programs.
+
 ## **Variables**
 
 ### Use meaningful and pronounceable variable names
 
+This example produces a UTC date in `YYYY-MM-DD` format. For a user-facing local
+date, choose an explicit locale and time zone with `Intl.DateTimeFormat`.
+
 **Bad:**
 
 ```javascript
-const yyyymmdstr = moment().format("YYYY/MM/DD");
+const yyyymmdd = new Date().toISOString().slice(0, 10);
 ```
 
 **Good:**
 
 ```javascript
-const currentDate = moment().format("YYYY/MM/DD");
+const currentDate = new Date().toISOString().slice(0, 10);
 ```
 
 **[⬆ back to top](#table-of-contents)**
@@ -84,9 +91,8 @@ getUser();
 We will read more code than we will ever write. It's important that the code we
 do write is readable and searchable. By _not_ naming variables that end up
 being meaningful for understanding our program, we hurt our readers.
-Make your names searchable. Tools like
-[buddy.js](https://github.com/danielstjules/buddy.js) and
-[ESLint](https://github.com/eslint/eslint/blob/660e0918933e6e7fede26bc675a0763a6b357c94/docs/rules/no-magic-numbers.md)
+Make your names searchable. ESLint's
+[`no-magic-numbers`](https://eslint.org/docs/latest/rules/no-magic-numbers) rule
 can help identify unnamed constants.
 
 **Bad:**
@@ -100,7 +106,7 @@ setTimeout(blastOff, 86400000);
 
 ```javascript
 // Declare them as capitalized named constants.
-const MILLISECONDS_PER_DAY = 60 * 60 * 24 * 1000; //86400000;
+const MILLISECONDS_PER_DAY = 60 * 60 * 24 * 1000;
 
 setTimeout(blastOff, MILLISECONDS_PER_DAY);
 ```
@@ -109,11 +115,14 @@ setTimeout(blastOff, MILLISECONDS_PER_DAY);
 
 ### Use explanatory variables
 
+This parser only illustrates the supplied US address format; it is not a general
+address validator.
+
 **Bad:**
 
 ```javascript
 const address = "One Infinite Loop, Cupertino 95014";
-const cityZipCodeRegex = /^[^,\\]+[,\\\s]+(.+?)\s*(\d{5})?$/;
+const cityZipCodeRegex = /^[^,]+,\s*(.+?)\s+(\d{5})$/;
 saveCityZipCode(
   address.match(cityZipCodeRegex)[1],
   address.match(cityZipCodeRegex)[2]
@@ -124,8 +133,13 @@ saveCityZipCode(
 
 ```javascript
 const address = "One Infinite Loop, Cupertino 95014";
-const cityZipCodeRegex = /^[^,\\]+[,\\\s]+(.+?)\s*(\d{5})?$/;
-const [_, city, zipCode] = address.match(cityZipCodeRegex) || [];
+const cityZipCodeRegex = /^[^,]+,\s*(.+?)\s+(\d{5})$/;
+const match = address.match(cityZipCodeRegex);
+if (!match) {
+  throw new Error("Address must include a city and ZIP code");
+}
+
+const [, city, zipCode] = match;
 saveCityZipCode(city, zipCode);
 ```
 
@@ -206,7 +220,9 @@ function paintCar(car, color) {
 Default parameters are often cleaner than short circuiting. Be aware that if you
 use them, your function will only provide default values for `undefined`
 arguments. Other "falsy" values such as `''`, `""`, `false`, `null`, `0`, and
-`NaN`, will not be replaced by a default value.
+`NaN`, will not be replaced by a default value. Use `value ?? fallback` when
+both `null` and `undefined` mean "missing". Use `||` only when every falsy value
+should trigger the fallback.
 
 **Bad:**
 
@@ -229,35 +245,16 @@ function createMicrobrewery(name = "Hipster Brew Co.") {
 
 ## **Functions**
 
-### Function arguments (2 or fewer ideally)
+### Keep function arguments clear
 
-Limiting the amount of function parameters is incredibly important because it
-makes testing your function easier. Having more than three leads to a
-combinatorial explosion where you have to test tons of different cases with
-each separate argument.
+Keep parameter lists easy to understand at the call site. Several positional
+arguments, especially booleans or values of the same type, can be hard to follow.
+An options object gives those arguments names. A small, clear positional API is
+also fine; grouping arguments does not reduce the number of cases to test.
 
-One or two arguments is the ideal case, and three should be avoided if possible.
-Anything more than that should be consolidated. Usually, if you have
-more than two arguments then your function is trying to do too much. In cases
-where it's not, most of the time a higher-level object will suffice as an
-argument.
-
-Since JavaScript allows you to make objects on the fly, without a lot of class
-boilerplate, you can use an object if you are finding yourself needing a
-lot of arguments.
-
-To make it obvious what properties the function expects, you can use the ES2015/ES6
-destructuring syntax. This has a few advantages:
-
-1. When someone looks at the function signature, it's immediately clear what
-   properties are being used.
-2. It can be used to simulate named parameters.
-3. Destructuring also clones the specified primitive values of the argument
-   object passed into the function. This can help prevent side effects. Note:
-   objects and arrays that are destructured from the argument object are NOT
-   cloned.
-4. Linters can warn you about unused properties, which would be impossible
-   without destructuring.
+Destructuring makes the expected properties visible in the function signature.
+It binds values to local variables; nested objects and arrays remain shared
+references. It does not clone the argument object.
 
 **Bad:**
 
@@ -289,11 +286,10 @@ createMenu({
 
 ### Functions should do one thing
 
-This is by far the most important rule in software engineering. When functions
-do more than one thing, they are harder to compose, test, and reason about.
-When you can isolate a function to just one action, it can be refactored
-easily and your code will read much cleaner. If you take nothing else away from
-this guide other than this, you'll be ahead of many developers.
+Give each function a coherent responsibility. Extract steps when naming them
+makes the caller easier to understand or lets you test meaningful behavior.
+A function can coordinate several steps without needing to split every statement
+into its own helper.
 
 **Bad:**
 
@@ -312,7 +308,7 @@ function emailClients(clients) {
 
 ```javascript
 function emailActiveClients(clients) {
-  clients.filter(isActiveClient).forEach(email);
+  clients.filter(isActiveClient).forEach(client => email(client));
 }
 
 function isActiveClient(client) {
@@ -440,11 +436,10 @@ to have two or more separate functions that do much of the same things. Removing
 duplicate code means creating an abstraction that can handle this set of
 different things with just one function/module/class.
 
-Getting the abstraction right is critical, that's why you should follow the
-SOLID principles laid out in the _Classes_ section. Bad abstractions can be
-worse than duplicate code, so be careful! Having said this, if you can make
-a good abstraction, do it! Don't repeat yourself, otherwise you'll find yourself
-updating multiple places anytime you want to change one thing.
+Extract shared behavior when the pieces represent the same rule and should
+change together. Similar-looking code can represent different rules; keeping it
+separate may be cheaper than maintaining an abstraction full of special cases.
+The [SOLID](#solid) principles can help assess the trade-offs.
 
 **Bad:**
 
@@ -509,71 +504,64 @@ function showEmployeeList(employees) {
 
 **[⬆ back to top](#table-of-contents)**
 
-### Set default objects with Object.assign
+### Set defaults without mutating the caller's object
+
+Use destructuring defaults when missing or `undefined` properties should use a
+fallback. Explicit `null`, `false`, `0`, and empty strings are preserved.
+[Object spread](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Spread_syntax)
+and `Object.assign({}, defaults, config)` are also useful for
+shallow merging, but an explicit `undefined` in `config` overwrites the default.
 
 **Bad:**
 
 ```javascript
-const menuConfig = {
-  title: null,
-  body: "Bar",
-  buttonText: null,
-  cancellable: true
-};
-
 function createMenu(config) {
   config.title = config.title || "Foo";
-  config.body = config.body || "Bar";
-  config.buttonText = config.buttonText || "Baz";
-  config.cancellable =
-    config.cancellable !== undefined ? config.cancellable : true;
+  config.cancellable = config.cancellable || true;
+  return config;
 }
-
-createMenu(menuConfig);
 ```
 
 **Good:**
 
 ```javascript
-const menuConfig = {
-  title: "Order",
-  // User did not include 'body' key
-  buttonText: "Send",
-  cancellable: true
-};
-
-function createMenu(config) {
-  let finalConfig = Object.assign(
-    {
-      title: "Foo",
-      body: "Bar",
-      buttonText: "Baz",
-      cancellable: true
-    },
-    config
-  );
-  return finalConfig
-  // config now equals: {title: "Order", body: "Bar", buttonText: "Send", cancellable: true}
-  // ...
+function createMenu({
+  title = "Foo",
+  body = "Bar",
+  buttonText = "Baz",
+  cancellable = true
+} = {}) {
+  return { title, body, buttonText, cancellable };
 }
 
-createMenu(menuConfig);
+const menuConfig = { title: "Order", buttonText: "Send", cancellable: false };
+const menu = createMenu(menuConfig);
+// menu: { title: "Order", body: "Bar", buttonText: "Send", cancellable: false }
+// menuConfig is unchanged.
 ```
 
 **[⬆ back to top](#table-of-contents)**
 
-### Don't use flags as function parameters
+### Make boolean arguments explicit
 
-Flags tell your user that this function does more than one thing. Functions should do one thing. Split out your functions if they are following different code paths based on a boolean.
+These Node.js examples accept trusted filenames and assume `./temp` exists.
+They return promises; callers must handle failures. The `wx` flag prevents
+overwriting an existing file.
+
+A positional boolean can hide intent at the call site. Use separate functions
+for distinct operations, or a named option for a genuine configuration choice.
+A boolean parameter alone does not mean a function has multiple responsibilities.
 
 **Bad:**
 
 ```javascript
+import { writeFile } from "node:fs/promises";
+
 function createFile(name, temp) {
   if (temp) {
-    fs.create(`./temp/${name}`);
+    return writeFile(`./temp/${name}`, "", { flag: "wx" });
   } else {
-    fs.create(name);
+    return writeFile(name, "", { flag: "wx" });
   }
 }
 ```
@@ -581,12 +569,14 @@ function createFile(name, temp) {
 **Good:**
 
 ```javascript
+import { writeFile } from "node:fs/promises";
+
 function createFile(name) {
-  fs.create(name);
+  return writeFile(name, "", { flag: "wx" });
 }
 
 function createTempFile(name) {
-  createFile(`./temp/${name}`);
+  return createFile(`./temp/${name}`);
 }
 ```
 
@@ -601,8 +591,8 @@ stranger.
 
 Now, you do need to have side effects in a program on occasion. Like the previous
 example, you might need to write to a file. What you want to do is to
-centralize where you are doing this. Don't have several functions and classes
-that write to a particular file. Have one service that does it. One and only one.
+centralize where you are doing this. Keep related writes behind a clear boundary
+so callers can understand and control them. A small program may only need a function; a service is optional.
 
 The main point is to avoid common pitfalls like sharing state between objects
 without any structure, using mutable data types that can be written to by anything,
@@ -663,21 +653,16 @@ button on an item they don't actually want before the network request begins?
 If that happens and the network request begins, then that purchase function
 will send the accidentally added item because the `cart` array was modified.
 
-A great solution would be for the `addItemToCart` function to always clone the 
-`cart`, edit it, and return the clone. This would ensure that functions that are still
-using the old shopping cart wouldn't be affected by the changes.
+Return a new cart array from `addItemToCart` so adding an entry does not change
+the membership of arrays already held by other callers.
 
-Two caveats to mention to this approach:
+Array spread makes a shallow copy: the old array keeps its membership, but
+existing entries and the `item` object are still shared. It does not create a
+complete snapshot for a purchase. Capture the required purchase data explicitly
+when starting that operation.
 
-1. There might be cases where you actually want to modify the input object,
-   but when you adopt this programming practice you will find that those cases
-   are pretty rare. Most things can be refactored to have no side effects!
-
-2. Cloning big objects can be very expensive in terms of performance. Luckily,
-   this isn't a big issue in practice because there are
-   [great libraries](https://facebook.github.io/immutable-js/) that allow
-   this kind of programming approach to be fast and not as memory intensive as
-   it would be for you to manually clone objects and arrays.
+Mutation can be appropriate when ownership is clear. Copying large collections
+also has a cost; measure it before adding a persistent-data library.
 
 **Bad:**
 
@@ -706,8 +691,8 @@ extend JavaScript's native Array method to have a `diff` method that could
 show the difference between two arrays? You could write your new function
 to the `Array.prototype`, but it could clash with another library that tried
 to do the same thing. What if that other library was just using `diff` to find
-the difference between the first and last elements of an array? This is why it
-would be much better to just use ES2015/ES6 classes and simply extend the `Array` global.
+the difference between the first and last elements of an array? Prefer a
+standalone function for this operation; subclassing `Array` adds behavior and inheritance that this example does not need.
 
 **Bad:**
 
@@ -721,23 +706,23 @@ Array.prototype.diff = function diff(comparisonArray) {
 **Good:**
 
 ```javascript
-class SuperArray extends Array {
-  diff(comparisonArray) {
-    const hash = new Set(comparisonArray);
-    return this.filter(elem => !hash.has(elem));
-  }
+function difference(array, comparisonArray) {
+  const excluded = new Set(comparisonArray);
+  return array.filter(element => !excluded.has(element));
 }
 ```
 
 **[⬆ back to top](#table-of-contents)**
 
-### Favor functional programming over imperative programming
+### Choose clear array operations
 
-JavaScript isn't a functional language in the way that Haskell is, but it has
-a functional flavor to it. Functional languages can be cleaner and easier to test.
-Favor this style of programming when you can.
+Choose the form that makes the operation clearest. Array methods work well for
+transforming, filtering, or aggregating values; loops work well for early exits
+and sequential steps. Neither style is automatically cleaner or faster.
+The following loop and `reduce` compute the same total. Lines of code are sample
+data here, not a measure of developer productivity.
 
-**Bad:**
+**Loop:**
 
 ```javascript
 const programmerOutput = [
@@ -766,7 +751,7 @@ for (let i = 0; i < programmerOutput.length; i++) {
 }
 ```
 
-**Good:**
+**Alternative with `reduce`:**
 
 ```javascript
 const programmerOutput = [
@@ -848,18 +833,15 @@ if (isDOMNodePresent(node)) {
 
 **[⬆ back to top](#table-of-contents)**
 
-### Avoid conditionals
+### Replace repeated type conditionals when useful
 
-This seems like an impossible task. Upon first hearing this, most people say,
-"how am I supposed to do anything without an `if` statement?" The answer is that
-you can use polymorphism to achieve the same task in many cases. The second
-question is usually, "well that's great but why would I want to do that?" The
-answer is a previous clean code concept we learned: a function should only do
-one thing. When you have classes and functions that have `if` statements, you
-are telling your user that your function does more than one thing. Remember,
-just do one thing.
+Use polymorphism when repeated branching on a type scatters the same decision
+across the codebase. A single `if` or `switch` is often the clearest solution and
+does not imply multiple responsibilities. The following inheritance example is
+one option when each airplane type already has distinct behavior; do not build
+a class hierarchy solely to remove a conditional.
 
-**Bad:**
+**Conditional dispatch:**
 
 ```javascript
 class Airplane {
@@ -877,7 +859,7 @@ class Airplane {
 }
 ```
 
-**Good:**
+**Alternative with polymorphism:**
 
 ```javascript
 class Airplane {
@@ -908,12 +890,12 @@ class Cessna extends Airplane {
 
 **[⬆ back to top](#table-of-contents)**
 
-### Avoid type-checking (part 1)
+### Prefer consistent APIs to constructor checks
 
-JavaScript is untyped, which means your functions can take any type of argument.
-Sometimes you are bitten by this freedom and it becomes tempting to do
-type-checking in your functions. There are many ways to avoid having to do this.
-The first thing to consider is consistent APIs.
+JavaScript is dynamically typed. When several implementations provide the same
+operation, give them a consistent API instead of branching on their constructors.
+Validate untrusted input at system boundaries; polymorphism does not replace
+runtime validation.
 
 **Bad:**
 
@@ -937,62 +919,58 @@ function travelToTexas(vehicle) {
 
 **[⬆ back to top](#table-of-contents)**
 
-### Avoid type-checking (part 2)
+### Validate types at system boundaries
 
-If you are working with basic primitive values like strings and integers,
-and you can't use polymorphism but you still feel the need to type-check,
-you should consider using TypeScript. It is an excellent alternative to normal
-JavaScript, as it provides you with static typing on top of standard JavaScript
-syntax. The problem with manually type-checking normal JavaScript is that
-doing it well requires so much extra verbiage that the faux "type-safety" you get
-doesn't make up for the lost readability. Keep your JavaScript clean, write
-good tests, and have good code reviews. Otherwise, do all of that but with
-TypeScript (which, like I said, is a great alternative!).
+Static checking with TypeScript or checked JSDoc can catch mistakes during
+development. [TypeScript's types are erased at runtime](https://www.typescriptlang.org/docs/handbook/2/basic-types.html#erased-types),
+so they cannot validate
+network responses, parsed JSON, or user input. Validate those values before
+using them, then keep internal contracts consistent.
 
 **Bad:**
 
 ```javascript
-function combine(val1, val2) {
-  if (
-    (typeof val1 === "number" && typeof val2 === "number") ||
-    (typeof val1 === "string" && typeof val2 === "string")
-  ) {
-    return val1 + val2;
-  }
-
-  throw new Error("Must be of type String or Number");
+function addNumbers(first, second) {
+  return first + second;
 }
+
+addNumbers(1, "2"); // "12", silently violating the numeric contract
 ```
 
 **Good:**
 
 ```javascript
-function combine(val1, val2) {
-  return val1 + val2;
+function addNumbers(first, second) {
+  if (!Number.isFinite(first) || !Number.isFinite(second)) {
+    throw new TypeError("Both arguments must be finite numbers");
+  }
+
+  return first + second;
 }
+
+addNumbers(1, 2); // 3
 ```
 
 **[⬆ back to top](#table-of-contents)**
 
 ### Don't over-optimize
 
-Modern browsers do a lot of optimization under-the-hood at runtime. A lot of
-times, if you are optimizing then you are just wasting your time. [There are good
-resources](https://github.com/petkaantonov/bluebird/wiki/Optimization-killers)
-for seeing where optimization is lacking. Target those in the meantime, until
-they are fixed if they can be.
+Start with clear code, then profile representative workloads before optimizing.
+JavaScript engines and workloads change; old engine-specific optimization advice
+may no longer apply. Caching an array's length also changes behavior if the array
+grows or shrinks during iteration. For an unchanged array, either loop below is
+valid; prefer the simpler form unless measurement gives you a reason otherwise.
 
-**Bad:**
+**Cached length:**
 
 ```javascript
-// On old browsers, each iteration with uncached `list.length` would be costly
-// because of `list.length` recomputation. In modern browsers, this is optimized.
+// Assumes the list length stays unchanged during iteration.
 for (let i = 0, len = list.length; i < len; i++) {
   // ...
 }
 ```
 
-**Good:**
+**Alternative:**
 
 ```javascript
 for (let i = 0; i < list.length; i++) {
@@ -1038,19 +1016,12 @@ inventoryTracker("apples", req, "www.inventory-awesome.io");
 
 ## **Objects and Data Structures**
 
-### Use getters and setters
+### Encapsulate state when it protects a contract
 
-Using getters and setters to access data on objects could be better than simply
-looking for a property on an object. "Why?" you might ask. Well, here's an
-unorganized list of reasons why:
-
-- When you want to do more beyond getting an object property, you don't have
-  to look up and change every accessor in your codebase.
-- Makes adding validation simple when doing a `set`.
-- Encapsulates the internal representation.
-- Easy to add logging and error handling when getting and setting.
-- You can lazy load your object's properties, let's say getting it from a
-  server.
+Expose plain properties for simple data. Use accessors or explicit methods when
+you need validation or must protect an invariant. Avoid adding trivial getters
+and setters to every property, and keep network requests explicit and asynchronous
+rather than hiding them behind property access.
 
 **Bad:**
 
@@ -1082,7 +1053,9 @@ function makeBankAccount() {
 
   // a "setter", made public via the returned object below
   function setBalance(amount) {
-    // ... validate before updating the balance
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new RangeError("Balance must be a non-negative finite number");
+    }
     balance = amount;
   }
 
@@ -1099,9 +1072,13 @@ account.setBalance(100);
 
 **[⬆ back to top](#table-of-contents)**
 
-### Make objects have private members
+### Use private state when needed
 
-This can be accomplished through closures (for ES5 and below).
+Closures can hide state in factory functions. Classes also support native
+[`#private` elements](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_elements).
+Choose the form that fits the object; hide state when it protects a contract,
+rather than making every property private by default. In this example, the
+contract requires the employee name to remain unchanged after construction.
 
 **Bad:**
 
@@ -1226,15 +1203,14 @@ class Human extends Mammal {
 
 **[⬆ back to top](#table-of-contents)**
 
-### Use method chaining
+### Use method chaining when it improves readability
 
-This pattern is very useful in JavaScript and you see it in many libraries such
-as jQuery and Lodash. It allows your code to be expressive, and less verbose.
-For that reason, I say, use method chaining and take a look at how clean your code
-will be. In your class functions, simply return `this` at the end of every function,
-and you can chain further class methods onto it.
+Method chaining can make a fluent API easier to read when several operations
+configure the same object. Separate calls are equally valid. Return `this` only
+when that is the intended contract; queries should return their result, and
+asynchronous operations should expose completion and failures through promises.
 
-**Bad:**
+**Separate calls:**
 
 ```javascript
 class Car {
@@ -1266,7 +1242,7 @@ car.setColor("pink");
 car.save();
 ```
 
-**Good:**
+**Alternative with chaining:**
 
 ```javascript
 class Car {
@@ -1380,14 +1356,11 @@ class Employee {
 
 ### Single Responsibility Principle (SRP)
 
-As stated in Clean Code, "There should never be more than one reason for a class
-to change". It's tempting to jam-pack a class with a lot of functionality, like
-when you can only take one suitcase on your flight. The issue with this is
-that your class won't be conceptually cohesive and it will give it many reasons
-to change. Minimizing the amount of times you need to change a class is important.
-It's important because if too much functionality is in one class and you modify
-a piece of it, it can be difficult to understand how that will affect other
-dependent modules in your codebase.
+The [Single Responsibility Principle](https://blog.cleancoder.com/uncle-bob/2014/05/08/SingleReponsibilityPrinciple.html)
+groups code that changes for the same reason and separates code that changes for
+different reasons. A class can change frequently and still have one cohesive
+responsibility. Separate authentication policy from settings behavior when those
+policies evolve independently.
 
 **Bad:**
 
@@ -1538,8 +1511,8 @@ of the desirable properties of that program (correctness, task performed,
 etc.)." That's an even scarier definition.
 
 The best explanation for this is if you have a parent class and a child class,
-then the base class and child class can be used interchangeably without getting
-incorrect results. This might still be confusing, so let's take a look at the
+then an instance of the child class should work wherever the base class is
+expected, without violating the base class's behavioral contract. Let's look at the
 classic Square-Rectangle example. Mathematically, a square is a rectangle, but
 if you model it using the "is-a" relationship via inheritance, you quickly
 get into trouble.
@@ -1650,19 +1623,17 @@ renderLargeShapes(shapes);
 
 ### Interface Segregation Principle (ISP)
 
-JavaScript doesn't have interfaces so this principle doesn't apply as strictly
-as others. However, it's important and relevant even with JavaScript's lack of
-type system.
+JavaScript has no built-in interface declarations, but objects and functions
+still expose contracts. Keep each contract focused on what its consumers need.
 
 ISP states that "Clients should not be forced to depend upon interfaces that
 they do not use." Interfaces are implicit contracts in JavaScript because of
 duck typing.
 
-A good example to look at that demonstrates this principle in JavaScript is for
-classes that require large settings objects. Not requiring clients to setup
-huge amounts of options is beneficial, because most of the time they won't need
-all of the settings. Making them optional helps prevent having a
-"fat interface".
+The example below removes a mandatory dependency on an animation module when
+traversal does not need animation. Making an option optional is useful here,
+but optional settings alone do not establish ISP: consumers should depend only
+on the operations they use.
 
 **Bad:**
 
@@ -1684,8 +1655,8 @@ class DOMTraverser {
 }
 
 const $ = new DOMTraverser({
-  rootNode: document.getElementsByTagName("body"),
-  animationModule() {} // Most of the time, we won't need to animate when traversing.
+  rootNode: document.body,
+  animationModule: { setup() {} } // Required even when no animation is needed.
   // ...
 });
 ```
@@ -1696,7 +1667,7 @@ const $ = new DOMTraverser({
 class DOMTraverser {
   constructor(settings) {
     this.settings = settings;
-    this.options = settings.options;
+    this.options = settings.options ?? {};
     this.setup();
   }
 
@@ -1706,9 +1677,7 @@ class DOMTraverser {
   }
 
   setupOptions() {
-    if (this.options.animationModule) {
-      // ...
-    }
+    this.options.animationModule?.setup();
   }
 
   traverse() {
@@ -1717,9 +1686,9 @@ class DOMTraverser {
 }
 
 const $ = new DOMTraverser({
-  rootNode: document.getElementsByTagName("body"),
+  rootNode: document.body,
   options: {
-    animationModule() {}
+    animationModule: { setup() {} }
   }
 });
 ```
@@ -1735,19 +1704,16 @@ This principle states two essential things:
 2. Abstractions should not depend upon details. Details should depend on
    abstractions.
 
-This can be hard to understand at first, but if you've worked with AngularJS,
-you've seen an implementation of this principle in the form of Dependency
-Injection (DI). While they are not identical concepts, DIP keeps high-level
-modules from knowing the details of its low-level modules and setting them up.
-It can accomplish this through DI. A huge benefit of this is that it reduces
-the coupling between modules. Coupling is a very bad development pattern because
-it makes your code hard to refactor.
+Dependency injection (DI) can support this principle by passing dependencies
+in from outside, rather than constructing them inside the consumer. No framework
+or container is required. Depend on the operations the consumer needs, so the
+implementation can change without rewriting that consumer.
 
 As stated previously, JavaScript doesn't have interfaces so the abstractions
 that are depended upon are implicit contracts. That is to say, the methods
 and properties that an object/class exposes to another object/class. In the
 example below, the implicit contract is that any Request module for an
-`InventoryTracker` will have a `requestItems` method.
+`InventoryTracker` will have a `requestItem` method.
 
 **Bad:**
 
@@ -1831,70 +1797,75 @@ inventoryTracker.requestItems();
 
 ## **Testing**
 
-Testing is more important than shipping. If you have no tests or an
-inadequate amount, then every time you ship code you won't be sure that you
-didn't break anything. Deciding on what constitutes an adequate amount is up
-to your team, but having 100% coverage (all statements and branches) is how
-you achieve very high confidence and developer peace of mind. This means that
-in addition to having a great testing framework, you also need to use a
-[good coverage tool](https://gotwarlost.github.io/istanbul/).
+Test observable behavior, including failure paths and boundaries that matter to
+users. Coverage helps locate untested code, but even 100% statement and branch
+coverage cannot prove that assertions are correct or requirements are complete.
+Use it alongside review and tests chosen for the risks of the change.
 
-There's no excuse to not write tests. There are [plenty of good JS test frameworks](https://jstherightway.org/#testing-tools), so find one that your team prefers.
-When you find one that works for your team, then aim to always write tests
-for every new feature/module you introduce. If your preferred method is
-Test Driven Development (TDD), that is great, but the main point is to just
-make sure you are reaching your coverage goals before launching any feature,
-or refactoring an existing one.
+Choose a test runner that fits the project. Node.js includes
+[`node:test`](https://nodejs.org/api/test.html) and strict assertions without
+additional dependencies. TDD is one way to develop behavior; the goal is useful
+feedback about correctness, rather than reaching a coverage number.
 
 ### Single concept per test
+
+Keep each test focused so its failure identifies the behavior that broke. Several
+assertions can belong to one behavior. These Node.js ES module examples use UTC
+dates to avoid local time-zone and daylight-saving differences.
 
 **Bad:**
 
 ```javascript
-import assert from "assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 
-describe("MomentJS", () => {
-  it("handles date boundaries", () => {
-    let date;
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
 
-    date = new MomentJS("1/1/2015");
-    date.addDays(30);
-    assert.equal("1/31/2015", date);
-
-    date = new MomentJS("2/1/2016");
-    date.addDays(28);
-    assert.equal("02/29/2016", date);
-
-    date = new MomentJS("2/1/2015");
-    date.addDays(28);
-    assert.equal("03/01/2015", date);
-  });
+test("addDays handles date boundaries", () => {
+  assert.equal(
+    addDays(new Date("2015-01-01T00:00:00Z"), 30).toISOString(),
+    "2015-01-31T00:00:00.000Z"
+  );
+  assert.equal(
+    addDays(new Date("2016-02-01T00:00:00Z"), 28).toISOString(),
+    "2016-02-29T00:00:00.000Z"
+  );
+  assert.equal(
+    addDays(new Date("2015-02-01T00:00:00Z"), 28).toISOString(),
+    "2015-03-01T00:00:00.000Z"
+  );
 });
 ```
 
 **Good:**
 
 ```javascript
-import assert from "assert";
+import assert from "node:assert/strict";
+import { test } from "node:test";
 
-describe("MomentJS", () => {
-  it("handles 30-day months", () => {
-    const date = new MomentJS("1/1/2015");
-    date.addDays(30);
-    assert.equal("1/31/2015", date);
-  });
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
 
-  it("handles leap year", () => {
-    const date = new MomentJS("2/1/2016");
-    date.addDays(28);
-    assert.equal("02/29/2016", date);
-  });
+test("addDays stays within January when adding 30 days", () => {
+  const result = addDays(new Date("2015-01-01T00:00:00Z"), 30);
+  assert.equal(result.toISOString(), "2015-01-31T00:00:00.000Z");
+});
 
-  it("handles non-leap year", () => {
-    const date = new MomentJS("2/1/2015");
-    date.addDays(28);
-    assert.equal("03/01/2015", date);
-  });
+test("addDays includes February 29 in a leap year", () => {
+  const result = addDays(new Date("2016-02-01T00:00:00Z"), 28);
+  assert.equal(result.toISOString(), "2016-02-29T00:00:00.000Z");
+});
+
+test("addDays rolls into March in a non-leap year", () => {
+  const result = addDays(new Date("2015-02-01T00:00:00Z"), 28);
+  assert.equal(result.toISOString(), "2015-03-01T00:00:00.000Z");
 });
 ```
 
@@ -1902,112 +1873,85 @@ describe("MomentJS", () => {
 
 ## **Concurrency**
 
-### Use Promises, not callbacks
+### Use promises for asynchronous sequences
 
-Callbacks aren't clean, and they cause excessive amounts of nesting. With ES2015/ES6,
-Promises are a built-in global type. Use them!
+Promises compose asynchronous results and propagate failures through a chain.
+Callbacks remain appropriate for event handlers and callback-based APIs; nested
+callbacks become difficult to follow when coordinating a sequence of operations.
 
-**Bad:**
+This Node.js ES module example uses native `fetch` and
+[`node:fs/promises`](https://nodejs.org/api/fs.html#promises-api).
+[`fetch`](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+rejects on network failures, but HTTP error responses require an explicit status
+check. The final handler sets a failing exit code for this command-line program.
+
+**Promise chain:**
 
 ```javascript
-import { get } from "request";
-import { writeFile } from "fs";
+import { writeFile } from "node:fs/promises";
 
-get(
-  "https://en.wikipedia.org/wiki/Robert_Cecil_Martin",
-  (requestErr, response, body) => {
-    if (requestErr) {
-      console.error(requestErr);
-    } else {
-      writeFile("article.html", body, writeErr => {
-        if (writeErr) {
-          console.error(writeErr);
-        } else {
-          console.log("File written");
-        }
-      });
+fetch("https://en.wikipedia.org/wiki/Robert_Cecil_Martin")
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
-  }
-);
-```
-
-**Good:**
-
-```javascript
-import { get } from "request-promise";
-import { writeFile } from "fs-extra";
-
-get("https://en.wikipedia.org/wiki/Robert_Cecil_Martin")
-  .then(body => {
-    return writeFile("article.html", body);
+    return response.text();
   })
-  .then(() => {
-    console.log("File written");
-  })
-  .catch(err => {
-    console.error(err);
+  .then(body => writeFile("article.html", body))
+  .then(() => console.log("File written"))
+  .catch(error => {
+    console.error(error);
+    process.exitCode = 1;
   });
 ```
 
 **[⬆ back to top](#table-of-contents)**
 
-### Async/Await are even cleaner than Promises
+### Use async/await when it makes the flow clearer
 
-Promises are a very clean alternative to callbacks, but ES2017/ES8 brings async and await
-which offer an even cleaner solution. All you need is a function that is prefixed
-in an `async` keyword, and then you can write your logic imperatively without
-a `then` chain of functions. Use this if you can take advantage of ES2017/ES8 features
-today!
+`async`/`await` is syntax for working with promises. It often makes sequential
+steps and error handling easier to follow; promise chains are also valid.
+Await independent operations together with `Promise.all` when concurrency is
+appropriate. Avoid accidental serialization and handle rejected promises.
 
-**Bad:**
-
-```javascript
-import { get } from "request-promise";
-import { writeFile } from "fs-extra";
-
-get("https://en.wikipedia.org/wiki/Robert_Cecil_Martin")
-  .then(body => {
-    return writeFile("article.html", body);
-  })
-  .then(() => {
-    console.log("File written");
-  })
-  .catch(err => {
-    console.error(err);
-  });
-```
-
-**Good:**
+**Alternative with `async`/`await` (Node.js ES module):**
 
 ```javascript
-import { get } from "request-promise";
-import { writeFile } from "fs-extra";
+import { writeFile } from "node:fs/promises";
 
 async function getCleanCodeArticle() {
-  try {
-    const body = await get(
-      "https://en.wikipedia.org/wiki/Robert_Cecil_Martin"
-    );
-    await writeFile("article.html", body);
-    console.log("File written");
-  } catch (err) {
-    console.error(err);
+  const response = await fetch(
+    "https://en.wikipedia.org/wiki/Robert_Cecil_Martin"
+  );
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
   }
+
+  const body = await response.text();
+  await writeFile("article.html", body);
+  console.log("File written");
 }
 
-getCleanCodeArticle()
+getCleanCodeArticle().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});
 ```
 
 **[⬆ back to top](#table-of-contents)**
 
 ## **Error Handling**
 
-Thrown errors are a good thing! They mean the runtime has successfully
-identified when something in your program has gone wrong and it's letting
-you know by stopping function execution on the current stack, killing the
-process (in Node), and notifying you in the console with a stack trace.
+Throwing an error stops the current synchronous execution path until a matching
+`catch` handles it. An uncaught exception can terminate a Node.js process.
+Errors thrown inside an `async` function reject its returned promise; callers
+must await or otherwise handle that rejection.
 
 ### Don't ignore caught errors
+
+Catch errors where you can recover, add useful context, or report a failure at an
+application boundary. Rethrowing with `cause` preserves the original error.
+Logging alone does not tell a caller that an operation failed.
 
 Doing nothing with a caught error doesn't give you the ability to ever fix
 or react to said error. Logging the error to the console (`console.log`)
@@ -2032,25 +1976,20 @@ try {
 try {
   functionThatMightThrow();
 } catch (error) {
-  // One option (more noisy than console.log):
-  console.error(error);
-  // Another option:
-  notifyUserOfError(error);
-  // Another option:
-  reportErrorToService(error);
-  // OR do all three!
+  throw new Error("Unable to complete the operation", { cause: error });
 }
 ```
 
 ### Don't ignore rejected promises
 
-For the same reason you shouldn't ignore caught errors
-from `try/catch`.
+The good example exposes a function returning the chain. Its caller must await
+or catch the resulting promise; a final application boundary can report the failure.
+Avoid logging the same error at every layer.
 
 **Bad:**
 
 ```javascript
-getdata()
+getData()
   .then(data => {
     functionThatMightThrow(data);
   })
@@ -2062,19 +2001,13 @@ getdata()
 **Good:**
 
 ```javascript
-getdata()
-  .then(data => {
-    functionThatMightThrow(data);
-  })
-  .catch(error => {
-    // One option (more noisy than console.log):
-    console.error(error);
-    // Another option:
-    notifyUserOfError(error);
-    // Another option:
-    reportErrorToService(error);
-    // OR do all three!
-  });
+function processData() {
+  return getData()
+    .then(data => functionThatMightThrow(data))
+    .catch(error => {
+      throw new Error("Unable to process the data", { cause: error });
+    });
+}
 ```
 
 **[⬆ back to top](#table-of-contents)**
@@ -2086,21 +2019,21 @@ rule that you must follow. The main point is DO NOT ARGUE over formatting.
 There are [tons of tools](https://standardjs.com/rules.html) to automate this.
 Use one! It's a waste of time and money for engineers to argue over formatting.
 
-For things that don't fall under the purview of automatic formatting
-(indentation, tabs vs. spaces, double vs. single quotes, etc.) look here
-for some guidance.
+Let the formatter handle indentation, tabs versus spaces, and quote style.
+Agree on naming and source organization conventions during review.
 
 ### Use consistent capitalization
 
-JavaScript is untyped, so capitalization tells you a lot about your variables,
-functions, etc. These rules are subjective, so your team can choose whatever
-they want. The point is, no matter what you all choose, just be consistent.
+JavaScript is dynamically typed, so consistent naming helps readers distinguish
+values, functions, and classes. `const` prevents reassignment of a binding; it
+does not make an object or array immutable. Your team can choose its naming
+conventions. The point is, no matter what you all choose, just be consistent.
 
 **Bad:**
 
 ```javascript
 const DAYS_IN_WEEK = 7;
-const daysInMonth = 30;
+const daysInApril = 30;
 
 const songs = ["Back In Black", "Stairway to Heaven", "Hey Jude"];
 const Artists = ["ACDC", "Led Zeppelin", "The Beatles"];
@@ -2116,10 +2049,10 @@ class Alpaca {}
 
 ```javascript
 const DAYS_IN_WEEK = 7;
-const DAYS_IN_MONTH = 30;
+const DAYS_IN_APRIL = 30;
 
-const SONGS = ["Back In Black", "Stairway to Heaven", "Hey Jude"];
-const ARTISTS = ["ACDC", "Led Zeppelin", "The Beatles"];
+const songs = ["Back In Black", "Stairway to Heaven", "Hey Jude"];
+const artists = ["ACDC", "Led Zeppelin", "The Beatles"];
 
 function eraseDatabase() {}
 function restoreDatabase() {}
@@ -2220,9 +2153,11 @@ review.perfReview();
 
 ## **Comments**
 
-### Only comment things that have business logic complexity.
+### Comment intent, constraints, and non-obvious behavior
 
-Comments are an apology, not a requirement. Good code _mostly_ documents itself.
+Clear names explain much of what code does. Comments can explain why it does it,
+document public contracts, or record constraints and workarounds. Keep them
+accurate and avoid narrating every statement.
 
 **Bad:**
 
@@ -2243,6 +2178,8 @@ function hashIt(data) {
     // Convert to 32-bit integer
     hash &= hash;
   }
+
+  return hash;
 }
 ```
 
@@ -2260,6 +2197,8 @@ function hashIt(data) {
     // Convert to 32-bit integer
     hash &= hash;
   }
+
+  return hash;
 }
 ```
 
@@ -2326,7 +2265,7 @@ proper indentation and formatting give the visual structure to your code.
 ////////////////////////////////////////////////////////////////////////////////
 // Scope Model Instantiation
 ////////////////////////////////////////////////////////////////////////////////
-$scope.model = {
+const model = {
   menu: "foo",
   nav: "bar"
 };
@@ -2342,7 +2281,7 @@ const actions = function() {
 **Good:**
 
 ```javascript
-$scope.model = {
+const model = {
   menu: "foo",
   nav: "bar"
 };
